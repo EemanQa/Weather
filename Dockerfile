@@ -1,28 +1,17 @@
-# Dockerfile
-# Use lightweight NGINX Alpine image
+# Use Windows-compatible base image
 FROM nginx:alpine
 
-# Install curl for health checks
-RUN apk add --no-cache curl
+# For Windows, use forward slashes
+WORKDIR /usr/share/nginx/html
 
-# Create directory for custom NGINX config
-RUN mkdir -p /etc/nginx/conf.d
+# Copy files
+COPY index.html /usr/share/nginx/html/
+COPY style.css /usr/share/nginx/html/
+COPY script.js /usr/share/nginx/html/
+COPY img/ /usr/share/nginx/html/img/
 
-# Copy custom NGINX configuration
-COPY nginx.conf /etc/nginx/conf.d/default.conf
-
-# Copy your website files
-COPY . /usr/share/nginx/html
-
-# Remove default NGINX index page
-RUN rm -f /usr/share/nginx/html/index.html
-
-# Expose port 80
+# Expose port
 EXPOSE 80
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost/ || exit 1
-
-# Start NGINX
+# Start nginx
 CMD ["nginx", "-g", "daemon off;"]
