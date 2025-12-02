@@ -1,10 +1,10 @@
-// Jenkinsfile - Final Windows-compatible version
+// Jenkinsfile - Fixed version
 pipeline {
     agent any
     
     environment {
-        APP_PORT = '3000'  // Your working port
-        DOCKER_REGISTRY = 'eemanqa'  // Your Docker Hub username
+        APP_PORT = '3000'
+        DOCKER_REGISTRY = 'eemanqa'
         IMAGE_NAME = 'weather-app'
         CONTAINER_NAME = 'weather-app-prod'
     }
@@ -53,17 +53,13 @@ pipeline {
                 bat """
                     echo 🧪 Testing deployment...
                     
-                    # Clean up test container
                     docker stop weather-test 2>nul || echo.
                     docker rm weather-test 2>nul || echo.
                     
-                    # Run test container
                     docker run -d --name weather-test -p 3001:80 ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                     
-                    # Wait for it to start
                     timeout /t 10 /nobreak >nul
                     
-                    # Test the website
                     curl -f http://localhost:3001 || (
                         echo ❌ Test failed! Checking logs...
                         docker logs weather-test
@@ -72,7 +68,6 @@ pipeline {
                     
                     echo ✅ Test passed!
                     
-                    # Clean up
                     docker stop weather-test
                     docker rm weather-test
                 """
@@ -105,21 +100,17 @@ pipeline {
                 bat """
                     echo 🚀 Deploying to production...
                     
-                    # Stop old container
                     docker stop ${CONTAINER_NAME} 2>nul || echo No old container found
                     docker rm ${CONTAINER_NAME} 2>nul || echo No container to remove
                     
-                    # Run new container on port 3000
                     docker run -d ^
                         --name ${CONTAINER_NAME} ^
                         -p ${APP_PORT}:80 ^
                         --restart unless-stopped ^
                         ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                     
-                    # Wait for deployment
                     timeout /t 10 /nobreak >nul
                     
-                    # Verify deployment
                     curl -f http://localhost:${APP_PORT} && echo ✅ Deployment successful!
                     
                     echo.
@@ -134,20 +125,17 @@ pipeline {
                 bat """
                     echo 🏥 Running health checks...
                     
-                    # Check container is running
                     docker ps --filter "name=${CONTAINER_NAME}" | findstr "${CONTAINER_NAME}"
                     if errorlevel 1 (
                         echo ❌ Container is not running!
                         exit 1
                     )
                     
-                    # Check website is accessible
                     curl -f http://localhost:${APP_PORT}/index.html || (
                         echo ❌ Website not accessible!
                         exit 1
                     )
                     
-                    # Check static files
                     curl -f http://localhost:${APP_PORT}/style.css && echo ✅ CSS accessible
                     curl -f http://localhost:${APP_PORT}/script.js && echo ✅ JavaScript accessible
                     
@@ -159,6 +147,9 @@ pipeline {
     
     post {
         success {
+            script {
+                currentBuild.description = "Weather App v${BUILD_NUMBER} on port ${APP_PORT}"
+            }
             echo """
             🎉 Pipeline completed successfully!
             
@@ -172,9 +163,6 @@ pipeline {
             
             ⏰ Build Time: ${currentBuild.durationString}
             """
-            
-            // Optional: Update build description
-            currentBuild.description = "Weather App v${BUILD_NUMBER} on port ${APP_PORT}"
         }
         
         failure {
