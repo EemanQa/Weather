@@ -98,15 +98,85 @@ pipeline {
                 """
             }
         }
+        
+        stage('Setup Monitoring') {
+            steps {
+                bat """
+                    echo 📊 Setting up monitoring stack...
+                    
+                    # Stop existing monitoring containers
+                    docker-compose -f docker-compose.monitoring.yml down 2>nul || echo.
+                    
+                    # Start monitoring stack
+                    docker-compose -f docker-compose.monitoring.yml up -d
+                    
+                    echo ✅ Monitoring stack started!
+                    echo 📈 Prometheus: http://localhost:9090
+                    echo 📊 Grafana: http://localhost:4000 (admin/admin123)
+                """
+            }
+        }
+        
+        stage('Monitor Health') {
+            steps {
+                bat """
+                    echo 🏥 Checking monitoring health...
+                    
+                    # Wait for monitoring to start
+                    ping -n 20 127.0.0.1 >nul
+                    
+                    # Test Prometheus
+                    curl -f http://localhost:9090 && echo ✅ Prometheus is up
+                    
+                    # Test Grafana
+                    curl -f http://localhost:4000/api/health && echo ✅ Grafana is up
+                    
+                    # Test metrics endpoint
+                    curl -f http://localhost:3000/metrics && echo ✅ Metrics endpoint is up
+                    
+                    echo 🎉 Monitoring setup complete!
+                """
+            }
+        }
     }
     
     post {
         success {
             echo 'Pipeline completed successfully!'
             echo "Weather App deployed on http://localhost:3000"
+            
+            script {
+                // Slack notification
+                bat '''
+                    ./notifications/slack-webhook.sh "✅ Deployment Successful! Weather App v${BUILD_NUMBER} deployed." "good"
+                '''
+                
+                // Email notification
+                emailext (
+                    subject: "SUCCESS: Weather App Deployment #${BUILD_NUMBER}",
+                    body: """
+                    Weather App has been successfully deployed!
+                    
+                    Details:
+                    - Build Number: ${BUILD_NUMBER}
+                    - Status: ${currentBuild.result}
+                    - URL: http://localhost:3000
+                    - Prometheus: http://localhost:9090
+                    - Grafana: http://localhost:4000 (admin/admin123)
+                    
+                    Build URL: ${BUILD_URL}
+                    """,
+                    to: 'your-email@example.com'
+                )
+            }
         }
         failure {
             echo 'Pipeline failed!'
+            script {
+                bat '''
+                    ./notifications/slack-webhook.sh "❌ Deployment Failed! Check Jenkins logs." "danger"
+                '''
+            }
         }
     }
 }

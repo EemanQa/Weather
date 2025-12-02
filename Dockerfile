@@ -1,17 +1,33 @@
-# Use Windows-compatible base image
-FROM nginx:alpine
+FROM node:18-alpine
 
-# For Windows, use forward slashes
-WORKDIR /usr/share/nginx/html
+WORKDIR /usr/src/app
 
-# Copy files
-COPY index.html /usr/share/nginx/html/
-COPY style.css /usr/share/nginx/html/
-COPY script.js /usr/share/nginx/html/
-COPY img/ /usr/share/nginx/html/img/
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy app files
+COPY . .
+
+# Install curl for health checks
+RUN apk add --no-cache curl
+
+# Create non-root user
+RUN addgroup -g 1001 -S nodejs && \
+    adduser -S nodejs -u 1001
+
+# Change ownership
+RUN chown -R nodejs:nodejs /usr/src/app
+USER nodejs
 
 # Expose port
-EXPOSE 80
+EXPOSE 3000
 
-# Start nginx
-CMD ["nginx", "-g", "daemon off;"]
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:3000/health || exit 1
+
+# Start the app
+CMD ["node", "server.js"]

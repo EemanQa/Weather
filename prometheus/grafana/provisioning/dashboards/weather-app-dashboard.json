@@ -1,0 +1,68 @@
+{
+  "dashboard": {
+    "title": "Weather App Monitoring",
+    "tags": ["weather", "monitoring"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "title": "Weather API Requests",
+        "type": "stat",
+        "targets": [{
+          "expr": "rate(weather_api_requests_total[5m])",
+          "legendFormat": "{{city}} - {{status}}"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "req/s"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0}
+      },
+      {
+        "title": "API Response Time",
+        "type": "graph",
+        "targets": [{
+          "expr": "histogram_quantile(0.95, rate(weather_api_response_time_seconds_bucket[5m]))",
+          "legendFormat": "95th percentile"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "s"
+          }
+        },
+        "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0}
+      },
+      {
+        "title": "Error Rate",
+        "type": "gauge",
+        "targets": [{
+          "expr": "rate(weather_api_requests_total{status=\"error\"}[5m]) / rate(weather_api_requests_total[5m])",
+          "legendFormat": "Error Rate"
+        }],
+        "fieldConfig": {
+          "defaults": {
+            "unit": "percentunit",
+            "thresholds": {
+              "steps": [
+                {"color": "green", "value": null},
+                {"color": "red", "value": 0.1}
+              ]
+            }
+          }
+        },
+        "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8}
+      },
+      {
+        "title": "Top Cities Searched",
+        "type": "table",
+        "targets": [{
+          "expr": "topk(5, sum by (city) (weather_api_requests_total))",
+          "instant": true,
+          "legendFormat": "{{city}}"
+        }],
+        "gridPos": {"h": 8, "w": 16, "x": 8, "y": 8}
+      }
+    ],
+    "time": {"from": "now-6h", "to": "now"}
+  }
+}
