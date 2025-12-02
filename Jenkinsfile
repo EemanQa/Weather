@@ -1,12 +1,10 @@
-# Save this as Jenkinsfile in your project directory
-@"
 pipeline {
     agent any
     
     environment {
         APP_PORT = '3000'
-        DOCKER_REGISTRY = 'eeman784'      // Your Docker Hub username
-        IMAGE_NAME = 'weather-app'        // Your repo name
+        DOCKER_REGISTRY = 'eeman784'
+        IMAGE_NAME = 'weather-app'
         CONTAINER_NAME = 'weather-app-prod'
     }
     
@@ -22,9 +20,9 @@ pipeline {
             steps {
                 bat """
                     echo Building Docker image...
-                    docker build -t \${DOCKER_REGISTRY}/\${IMAGE_NAME}:\${BUILD_NUMBER} .
-                    docker tag \${DOCKER_REGISTRY}/\${IMAGE_NAME}:\${BUILD_NUMBER} \${DOCKER_REGISTRY}/\${IMAGE_NAME}:latest
-                    echo Image built: \${DOCKER_REGISTRY}/\${IMAGE_NAME}:\${BUILD_NUMBER}
+                    docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} .
+                    docker tag ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                    echo Image built: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}
                 """
             }
         }
@@ -37,7 +35,7 @@ pipeline {
                     docker stop weather-test 2>nul || echo.
                     docker rm weather-test 2>nul || echo.
                     
-                    docker run -d --name weather-test -p 3001:80 \${DOCKER_REGISTRY}/\${IMAGE_NAME}:latest
+                    docker run -d --name weather-test -p 3001:80 ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                     
                     ping -n 10 127.0.0.1 >nul
                     
@@ -67,8 +65,8 @@ pipeline {
                         
                         echo %DOCKER_PASSWORD% | docker login -u %DOCKER_USERNAME% --password-stdin
                         
-                        docker push \${DOCKER_REGISTRY}/\${IMAGE_NAME}:\${BUILD_NUMBER}
-                        docker push \${DOCKER_REGISTRY}/\${IMAGE_NAME}:latest
+                        docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}
+                        docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                         
                         echo Images pushed to Docker Hub
                     """
@@ -81,22 +79,22 @@ pipeline {
                 bat """
                     echo Deploying to production...
                     
-                    docker stop \${CONTAINER_NAME} 2>nul || echo No old container found
-                    docker rm \${CONTAINER_NAME} 2>nul || echo No container to remove
+                    docker stop ${CONTAINER_NAME} 2>nul || echo No old container found
+                    docker rm ${CONTAINER_NAME} 2>nul || echo No container to remove
                     
                     docker run -d ^
-                        --name \${CONTAINER_NAME} ^
-                        -p \${APP_PORT}:80 ^
+                        --name ${CONTAINER_NAME} ^
+                        -p ${APP_PORT}:80 ^
                         --restart unless-stopped ^
-                        \${DOCKER_REGISTRY}/\${IMAGE_NAME}:latest
+                        ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                     
                     ping -n 5 127.0.0.1 >nul
                     
-                    curl -f http://localhost:\${APP_PORT} && echo Deployment successful!
+                    curl -f http://localhost:${APP_PORT} && echo Deployment successful!
                     
                     echo.
                     echo Deployment Information:
-                    docker ps --filter "name=\${CONTAINER_NAME}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+                    docker ps --filter "name=${CONTAINER_NAME}" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
                 """
             }
         }
@@ -112,4 +110,3 @@ pipeline {
         }
     }
 }
-"@ | Out-File Jenkinsfile -Encoding UTF8 -Force
