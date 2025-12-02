@@ -1,13 +1,12 @@
-// Jenkinsfile
+// Jenkinsfile for Windows Jenkins
 pipeline {
     agent any
     
     environment {
-        // Change these to match your Docker Hub
-        DOCKER_REGISTRY = 'your-dockerhub-username'  // Replace with your Docker Hub username
+        // Change this to your Docker Hub username
+        DOCKER_REGISTRY = 'your-dockerhub-username'
         IMAGE_NAME = 'weather-app'
         CONTAINER_NAME = 'weather-app-prod'
-        PORT = '80'
     }
     
     stages {
@@ -17,22 +16,31 @@ pipeline {
                 echo '✅ Code checked out successfully from GitHub'
                 
                 // Show what files we have
-                sh 'ls -la'
+                bat 'dir'
             }
         }
         
         stage('Validate Files') {
             steps {
                 script {
+                    echo '🔍 Validating required files...'
+                    
                     // Check if required files exist
+                    def files = findFiles(glob: '*')
                     def requiredFiles = ['index.html', 'style.css', 'script.js', 'Dockerfile']
+                    def missingFiles = []
+                    
                     requiredFiles.each { file ->
                         if (!fileExists(file)) {
-                            error "❌ Missing required file: ${file}"
+                            missingFiles.add(file)
                         }
                     }
                     
-                    echo '✅ All required files present'
+                    if (missingFiles) {
+                        error "❌ Missing required files: ${missingFiles}"
+                    } else {
+                        echo '✅ All required files present'
+                    }
                 }
             }
         }
@@ -42,20 +50,13 @@ pipeline {
                 script {
                     echo '🐳 Building Docker image...'
                     
-                    // Tag with build number and timestamp
-                    def timestamp = sh(script: 'date +%Y%m%d%H%M%S', returnStdout: true).trim()
-                    def imageTag = "${BUILD_NUMBER}-${timestamp}"
-                    
-                    // Build the image
-                    docker.build("${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}")
-                    
-                    // Also tag as latest
-                    sh """
-                        docker tag ${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag} \
-                               ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                    // For Windows, use docker build with --platform if needed
+                    bat """
+                        docker build -t ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} .
+                        docker tag ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER} ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                     """
                     
-                    echo "✅ Image built: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${imageTag}"
+                    echo "✅ Image built: ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}"
                 }
             }
         }
@@ -65,34 +66,32 @@ pipeline {
                 script {
                     echo '🧪 Testing Docker image...'
                     
-                    sh """
-                        # Run container for testing
-                        docker run -d --name weather-test -p 8080:80 \
-                            ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
+                    bat """
+                        @echo off
                         
-                        # Wait for container to start
-                        sleep 5
+                        echo Stopping any existing test container...
+                        docker stop weather-test 2>nul || echo No existing container
+                        docker rm weather-test 2>nul || echo No container to remove
                         
-                        # Check if container is running
-                        docker ps | grep weather-test
+                        echo Running new test container...
+                        docker run -d --name weather-test -p 8080:80 ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                         
-                        # Test if website is accessible
-                        echo "Testing website availability..."
-                        curl -f http://localhost:8080 || exit 1
+                        timeout /t 10 /nobreak >nul
                         
-                        # Check if index.html is served
-                        echo "Checking HTML content..."
-                        curl -s http://localhost:8080 | grep -q "Weather app" && echo "✅ HTML content verified"
+                        echo Checking if container is running...
+                        docker ps --filter "name=weather-test"
                         
-                        # Check static files
-                        echo "Checking CSS file..."
-                        curl -f http://localhost:8080/style.css && echo "✅ CSS file found"
+                        echo Testing website...
+                        curl -f http://localhost:8080/ || (
+                            echo ❌ Website test failed
+                            exit 1
+                        )
                         
-                        # Clean up test container
+                        echo ✅ Website test passed!
+                        
+                        echo Cleaning up...
                         docker stop weather-test
                         docker rm weather-test
-                        
-                        echo "✅ All tests passed!"
                     """
                 }
             }
@@ -104,19 +103,21 @@ pipeline {
                     echo '⬆️ Pushing to Docker Hub...'
                     
                     withCredentials([usernamePassword(
-                        credentialsId: 'dockerhub-credentials',  // Create this in Jenkins
+                        credentialsId: 'dockerhub-credentials',
                         usernameVariable: 'DOCKER_USERNAME',
                         passwordVariable: 'DOCKER_PASSWORD'
                     )]) {
-                        sh """
-                            # Login to Docker Hub
-                            echo \${DOCKER_PASSWORD} | docker login -u \${DOCKER_USERNAME} --password-stdin
+                        bat """
+                            @echo off
                             
-                            # Push images
+                            echo Logging in to Docker Hub...
+                            echo %DOCKER_PASSWORD% | docker login -u %DOCKER_USERNAME% --password-stdin
+                            
+                            echo Pushing images...
                             docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:${BUILD_NUMBER}
                             docker push ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                             
-                            echo "✅ Images pushed to Docker Hub"
+                            echo ✅ Images pushed to Docker Hub
                         """
                     }
                 }
@@ -128,52 +129,30 @@ pipeline {
                 script {
                     echo '🚀 Deploying to production...'
                     
-                    sh """
-                        # Stop and remove old container if exists
-                        docker stop ${CONTAINER_NAME} 2>/dev/null || true
-                        docker rm ${CONTAINER_NAME} 2>/dev/null || true
+                    bat """
+                        @echo off
                         
-                        # Pull latest image (or use local one)
-                        docker pull ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest || echo "Using local image"
+                        echo Stopping old container if exists...
+                        docker stop ${CONTAINER_NAME} 2>nul || echo No old container found
+                        docker rm ${CONTAINER_NAME} 2>nul || echo No container to remove
                         
-                        # Run new container
-                        docker run -d \\
-                            --name ${CONTAINER_NAME} \\
-                            -p ${PORT}:80 \\
-                            --restart unless-stopped \\
+                        echo Running new container...
+                        docker run -d ^
+                            --name ${CONTAINER_NAME} ^
+                            -p 80:80 ^
+                            --restart unless-stopped ^
                             ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
                         
-                        echo "✅ Container deployed: ${CONTAINER_NAME}"
+                        timeout /t 5 /nobreak >nul
                         
-                        # Verify deployment
-                        sleep 3
-                        curl -f http://localhost:${PORT} && echo "✅ Website is live!"
+                        echo ✅ Container deployed: ${CONTAINER_NAME}
                         
-                        # Show container info
-                        echo "\\n📊 Container Status:"
+                        echo Container status:
                         docker ps --filter "name=${CONTAINER_NAME}" --format "table {{.Names}}\\t{{.Status}}\\t{{.Ports}}"
-                    """
-                }
-            }
-        }
-        
-        stage('Post-Deployment Check') {
-            steps {
-                script {
-                    echo '🔍 Running post-deployment checks...'
-                    
-                    sh """
-                        # Check container logs
-                        echo "\\n📝 Recent logs:"
-                        docker logs --tail 10 ${CONTAINER_NAME}
                         
-                        # Check container health
-                        echo "\\n🏥 Container health:"
-                        docker inspect --format='{{.State.Health.Status}}' ${CONTAINER_NAME} || echo "No health check configured"
-                        
-                        # Check resource usage
-                        echo "\\n💾 Resource usage:"
-                        docker stats ${CONTAINER_NAME} --no-stream --format "table {{.Name}}\\t{{.CPUPerc}}\\t{{.MemUsage}}\\t{{.NetIO}}"
+                        echo.
+                        echo 🌐 Your weather app is now live at:
+                        echo http://localhost:80
                     """
                 }
             }
@@ -187,45 +166,39 @@ pipeline {
             
             📍 Deployment Details:
             - Application: Weather App
-            - Version: Build #${BUILD_NUMBER}
+            - Build Number: ${BUILD_NUMBER}
             - Container: ${CONTAINER_NAME}
-            - Port: ${PORT}
-            - Access: http://your-server-ip:${PORT}
+            - Port: 80
             - Docker Image: ${DOCKER_REGISTRY}/${IMAGE_NAME}:latest
             
             ⏰ Build Time: ${currentBuild.durationString}
             """
-            
-            // Optional: Send notification
-            // emailext (
-            //     subject: "SUCCESS: Weather App Deployed - Build #${BUILD_NUMBER}",
-            //     body: "Weather App has been successfully deployed.\n\nView build: ${BUILD_URL}",
-            //     to: 'your-email@example.com'
-            // )
         }
         
         failure {
             echo '❌ Pipeline failed! Check the logs above for errors.'
             
-            // Optional rollback
-            sh """
-                echo "Attempting rollback..."
-                docker stop ${CONTAINER_NAME} 2>/dev/null || true
-                # You could add logic to rollback to previous version here
+            // Clean up on failure
+            bat """
+                @echo off
+                echo Cleaning up failed deployment...
+                docker stop ${CONTAINER_NAME} 2>nul || echo No container to stop
+                docker rm ${CONTAINER_NAME} 2>nul || echo No container to remove
             """
         }
         
         always {
-            echo '🧹 Cleaning up workspace...'
-            cleanWs()
+            echo '🧹 Cleaning up...'
             
-            // Clean up any dangling images
-            sh 'docker image prune -f 2>/dev/null || true'
+            // Clean up test containers
+            bat """
+                @echo off
+                docker stop weather-test 2>nul || echo.
+                docker rm weather-test 2>nul || echo.
+                
+                echo Removing dangling images...
+                docker image prune -f 2>nul || echo.
+            """
         }
-    }
-    
-    options {
-        timeout(time: 30, unit: 'MINUTES')
-        buildDiscarder(logRotator(numToKeepStr: '10'))
     }
 }
